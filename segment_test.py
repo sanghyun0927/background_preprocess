@@ -59,7 +59,7 @@ def main(args):
         # full_gray = np.ones((size, size, 4), dtype='uint8') * 170
 
         car = remove(img, alpha_matting=True, post_process_mask=True, model_name=model_name, size=1024)  #, model_name='InSPyReNet', size=1024  #, model_name='u2car_v2.1', size=320
-        car.save(args.output_dir)
+        car.save(os.path.join(args.output_dir, i.split("/")[-1]))
 
 
 if __name__ == "__main__":

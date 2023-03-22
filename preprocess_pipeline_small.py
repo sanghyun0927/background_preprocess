@@ -10,14 +10,15 @@ from tqdm import tqdm
 from Utils.u2net_bg import remove
 from Utils.preprocess import stroke_contour, stroke_mask, scale_for_paste, adjust_outline_height
 
-cwd = os.getcwd()
-image_dirs = glob(cwd + "\\bakcha2\\vancar\\*\\", recursive = True)
-img_paths = []
-
 top_y_ratio = 1
 mask_y_ratio = 0.525
 car_y_ratio = 0.65
 background_path = './background/background.png'
+
+cwd = os.getcwd()
+image_dirs = glob(cwd + "\\bakcha2\\vancar\\*\\", recursive = True)
+img_paths = []
+
 
 for dir in image_dirs:
     img_path = os.listdir(dir)

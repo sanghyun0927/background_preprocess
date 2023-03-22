@@ -19,6 +19,7 @@ cwd = os.getcwd()
 image_dirs = glob(cwd + "\\bakcha2\\vancar\\*\\", recursive = True)
 img_paths = []
 
+
 for dir in image_dirs:
     img_path = os.listdir(dir)
     for path in img_path:
@@ -32,7 +33,7 @@ for dir in image_dirs:
             continue
         img_paths.append(dir + path)
 
-for i in tqdm(img_paths[:8]):
+for i in tqdm(img_paths):
     print(i)
     img_path = i
     process_path = i.split(".")[0] + '_process.png'
