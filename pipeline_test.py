@@ -7,6 +7,7 @@ from tqdm import tqdm
 
 from Utils.u2net_bg import remove
 from Utils.preprocess import stroke_contour, stroke_mask, adjust_outline_height
+from Utils.preprocess_test import rescale_and_paste, create_manipulated_mask
 
 top_y_ratio = 1
 mask_y_ratio = 0.525
@@ -21,9 +22,8 @@ for i in tqdm(range(1)):
     orig_path = i.split(".")[0] + '_orig.png'
     visual_path = i.split(".")[0] + '_visualize.png'
 
-    # 세그멘테이션 및 정사각형 이미지 생성
-    car = remove(Image.open(i), alpha_matting=True, post_process_mask=True, model_name='InSPyReNet',
-                 size=1024)  # model_name='u2car_v2.1', size=320 model_name='InSPyReNet', size=1024
+    # 세그멘테이션 및 정사각형 이미지 생성, (model_name='u2car_v2.1', size=320 / model_name='InSPyReNet', size=1024)
+    car = remove(Image.open(i), post_process_mask=True, model_name='InSPyReNet', size=1024)
     car_array = np.array(car)
 
     # Foreground(자동차) 이미지에서 상하, 좌우에 위치한 여백을 지운다.
@@ -35,54 +35,56 @@ for i in tqdm(range(1)):
     image_size = car_full_array.shape[:2]
     mask_size = image_size[0] // 7
     contour_size = np.max(image_size) // 80 if np.max(image_size) < 2048 else 2048 // 108
-    foreground_mask, foreground, foreground_alpha = stroke_mask(car_array, threshold=0,
-                                                                mask_size=car_array.shape[0] // 8,
-                                                                colors=(230, 230, 230))
-    foreground_contour = stroke_contour(car_array, threshold=0, mask_size=mask_size,
-                                        colors=(230, 230, 230),
-                                        contour_size=contour_size)  # 윤곽선을 포함한 차량 이미지, 배경 없음 (N x N x 4), 'RGBA'
+    foreground, foreground_mask, foreground_alpha = stroke_mask(car_array, mask_size=mask_size)
+    foreground_contour = stroke_contour(car_array, mask_size=mask_size, contour_size=contour_size)
 
     ## 배경 생성
-    img = Image.open(background_path).convert('RGB')  # + img_path.split('\\')[-1]
-    img_array = np.array(img)
+    background = Image.open(background_path).convert('RGBA')  # + img_path.split('\\')[-1]
+    # img_array = np.array(img)
 
-    foreground_resized, background_resized = scale_for_paste(img_array, np.array(foreground), 4, 255, car_y_ratio, True)
-    image = Image.alpha_composite(Image.fromarray(background_resized), Image.fromarray(
-        foreground_resized))  # 합성된 차량 이미지, 디지털 이미지 배경 (N x N x 4), N = argmax(H,W)+stroke_size, 'RGBA'
+    # 합성된 차량 이미지, 디지털 이미지 배경 (N x N x 4), N = argmax(H,W)+stroke_size, 'RGBA'
+    img_pasted, new_foreground = rescale_and_paste(foreground, background, only_rescale=False)
 
-    ## 마스크 array 크기 조정
-    mask_resized, _ = scale_for_paste(img_array, np.array(foreground_mask), 4, 255, car_y_ratio, True)
+    # 마스크 array 크기 조정
+    mask_resized = rescale_and_paste(foreground_mask, background, only_rescale=True)
+    mask_resized_np = np.array(mask_resized)
 
-    ## 윤곽선 array 및 foreground alpha array 크기 조정
-    white_image = np.ones(img_array.shape, dtype='uint8') * 255
-    contour_resized, _ = scale_for_paste(white_image, np.expand_dims(np.array(foreground_contour)[:, :, 3], axis=2), 1,
-                                         255, car_y_ratio, True)
-    alpha_resized, _ = scale_for_paste(white_image, np.expand_dims(foreground_alpha, axis=2), 1, 0, car_y_ratio,
-                                       True)  # (N x N x 1)
+    # 윤곽선 array 크기 조정 및 윤곽선 array의 alpha 채널 추출
+    contour_resized = rescale_and_paste(foreground_contour, background, only_rescale=True)
+    contour_alpha_np = np.array(contour_resized)[:, :, 3]
 
-    ## 윤곽선 array에서 좌우 윤곽선 높이 지정
-    contour_resized = adjust_outline_height(alpha_resized, contour_resized)
+    # foreground alpha array 크기 조정
+    alpha_resized = rescale_and_paste(foreground_alpha, background, only_rescale=True)
+    alpha_resized_np = np.array(alpha_resized)
 
-    ## 최초 마스크 및 윤곽선, Alpha 채널 값을 고려한 최종 마스크 생성
-    i, j = np.where(mask_resized[:, :, 3] == 0)
-    k, l = np.where(alpha_resized[:, :, 0] == 0)
-    m, n = np.where(contour_resized[:, :, 0] == 255)
+    # rescale_and_paste 함수를 통일하여 사용하는 과정에서 binary image 인 alpha_resized는 추가적 코딩이 필요하게 되었다.
+    y, x = np.where(alpha_resized_np[:, :, 3] == 0)
+    alpha_resized_np[y, x, :] = 255
+    alpha_resized_np = alpha_resized_np[:, :, 0]
 
-    mask_ = np.ones(mask_resized.shape[:2], dtype='uint8') * 0
-    mask_[i, j] = 255
-    mask_[int(mask_resized.shape[0] * mask_y_ratio):, :] = 0
-    mask_[k, l] = 255
-    mask_[:k.min() * top_y_ratio, :] = 255
-    mask_[m, n] = 255
+    # 윤곽선 array에서 좌우 윤곽선 높이 지정
+    contour_modified = adjust_outline_height(alpha_resized_np, contour_alpha_np)
 
-    mask = Image.fromarray(mask_)
+    # # 최초 마스크 및 윤곽선, Alpha 채널 값을 고려한 최종 마스크 생성
+    # mask_y, mask_x = np.where(mask_resized_np[:, :, 3] == 0)
+    # alpha_y, alpha_x = np.where(alpha_resized_np[:, :] == 0)
+    # contour_y, contour_x = np.where(contour_modified[:, :] == 255)
+    #
+    # mask_array = np.ones(mask_resized_np.shape[:2], dtype='uint8') * 0
+    # mask_array[mask_y, mask_x] = 255
+    # mask_array[int(mask_resized_np.shape[0] * mask_y_ratio):, :] = 0
+    # mask_array[alpha_y, alpha_x] = 255
+    # mask_array[:alpha_y.min() * top_y_ratio, :] = 255
+    # mask_array[contour_y, contour_x] = 255
+    #
+    # # Create a reverse mask and append it to the original mask as an alpha channel
+    # mask_reverse = np.expand_dims(np.where(mask_array < 128, 255, 0).astype('uint8'), axis=2)
+    # mask_rgb = np.tile(np.expand_dims(mask_array, axis=2), reps=[1, 1, 3])
+    # mask_rgba = np.concatenate((mask_rgb, mask_reverse), axis=-1)
+    # mask = Image.fromarray(mask_rgba, mode='RGBA')
+    mask = create_manipulated_mask(mask_resized_np, alpha_resized_np, contour_modified)
 
-    mask_reverse = np.expand_dims(np.where(mask_ < 128, 255, 0).astype('uint8'), axis=2)
-    mask_ = np.append(np.tile(np.expand_dims(mask_, axis=2), reps=[1, 1, 3]), mask_reverse,
-                      axis=-1)  # , np.ones((mask_.shape[0], mask_.shape[1], 1), dtype='uint8') * 255, axis = 2) // ,
-    mask = Image.fromarray(mask_, mode='RGBA')
-
-    image.save(process_path)
+    img_pasted.save(process_path)
     mask.save(mask_path)
-    Image.fromarray(foreground_resized).save(orig_path)
-    Image.alpha_composite(image, mask).save(visual_path)
+    Image.fromarray(new_foreground).save(orig_path)
+    Image.alpha_composite(img_pasted, mask).save(visual_path)

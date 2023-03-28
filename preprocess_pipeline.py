@@ -57,7 +57,7 @@ for i in tqdm(img_paths):
 
     ## 마스크 및 윤곽선 생성
     contour_size = np.max(np.shape(car)[:2]) // 100 if np.max(np.shape(car)[:2]) < 2048 else 2048//108
-    foreground_mask, foreground, foreground_alpha = stroke_mask(car, threshold=0, mask_size=car.shape[0] // 8,
+    foreground, foreground_mask, foreground_alpha = stroke_mask(car, threshold=0, mask_size=car.shape[0] // 8,
                                                                 colors=(230, 230, 230))
     foreground_contour = stroke_contour(car, threshold=0, mask_size=np.shape(car)[0] // 8, colors=(230, 230, 230),
                                         contour_size=contour_size)  # 윤곽선을 포함한 차량 이미지, 배경 없음 (N x N x 4), 'RGBA'

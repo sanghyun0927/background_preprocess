@@ -8,7 +8,8 @@ import xgboost as xgb
 from typing import List, Tuple
 
 
-def scale_for_paste(background: np.ndarray, foreground: np.ndarray, channel_dimension: int, alpha_value: int, car_y_ratio: int, small: bool = False) -> Tuple[
+def scale_for_paste(background: np.ndarray, foreground: np.ndarray, channel_dimension: int, alpha_value: int,
+                    car_y_ratio: int, small: bool = False) -> Tuple[
     np.ndarray, np.ndarray]:
     """
     Resize and position the foreground image to match the background image, and return the modified images.
@@ -42,7 +43,8 @@ def scale_for_paste(background: np.ndarray, foreground: np.ndarray, channel_dime
                                     interpolation=cv2.INTER_AREA)
         else:
             scale_factor = background_width / foreground_width
-            foreground = cv2.resize(foreground, dsize=(0, 0), fx=scale_factor, fy=scale_factor,interpolation=cv2.INTER_AREA)
+            foreground = cv2.resize(foreground, dsize=(0, 0), fx=scale_factor, fy=scale_factor,
+                                    interpolation=cv2.INTER_AREA)
 
             # If the foreground image is grayscale, add a third dimension for compatibility with the background image
             if len(foreground.shape) == 2:
@@ -71,9 +73,12 @@ def scale_for_paste(background: np.ndarray, foreground: np.ndarray, channel_dime
             foreground_for_pasting[y_high_limit_idx:y_low_limit_idx, :, :] = foreground[i.min():i.max(), :, :]
         else:
             if (i.max() - i.min()) % 2 == 0:
-                foreground_for_pasting[(car_y_pos - car_height):(car_y_pos + car_height), :, :] = foreground[i.min():i.max(), :, :]
+                foreground_for_pasting[(car_y_pos - car_height):(car_y_pos + car_height), :, :] = foreground[
+                                                                                                  i.min():i.max(), :, :]
             else:
-                foreground_for_pasting[(car_y_pos - car_height - 1):(car_y_pos + car_height), :, :] = foreground[i.min():i.max(), :, :]
+                foreground_for_pasting[(car_y_pos - car_height - 1):(car_y_pos + car_height), :, :] = foreground[
+                                                                                                      i.min():i.max(),
+                                                                                                      :, :]
 
         white_channel = np.ones((background.shape[0], background.shape[1], 1), dtype='uint8') * 255
         background = np.concatenate([background, white_channel], axis=2)
@@ -82,12 +87,13 @@ def scale_for_paste(background: np.ndarray, foreground: np.ndarray, channel_dime
         foreground_width = foreground.shape[1]
         background_width = background.shape[1]
         if foreground_width < background_width:
-            scale_factor = foreground_width / background_width * (7/6)
+            scale_factor = foreground_width / background_width * (7 / 6)
             background = cv2.resize(background, dsize=(0, 0), fx=scale_factor, fy=scale_factor,
                                     interpolation=cv2.INTER_AREA)
         else:
-            scale_factor = background_width / foreground_width * (6/7)
-            foreground = cv2.resize(foreground, dsize=(0, 0), fx=scale_factor, fy=scale_factor,interpolation=cv2.INTER_AREA)
+            scale_factor = background_width / foreground_width * (6 / 7)
+            foreground = cv2.resize(foreground, dsize=(0, 0), fx=scale_factor, fy=scale_factor,
+                                    interpolation=cv2.INTER_AREA)
 
             # If the foreground image is grayscale, add a third dimension for compatibility with the background image
             if len(foreground.shape) == 2:
@@ -112,15 +118,20 @@ def scale_for_paste(background: np.ndarray, foreground: np.ndarray, channel_dime
             y_low_limit_idx = foreground_for_pasting.shape[0] * 99 // 100
             if y_low_limit_idx > (i.max() - i.min()):
                 y_high_limit_idx = y_low_limit_idx - i.max() + i.min()
-                foreground_for_pasting[y_high_limit_idx:y_low_limit_idx, X_width:(X_width+foreground.shape[1]), :] = foreground[i.min():i.max(), :, :]
+                foreground_for_pasting[y_high_limit_idx:y_low_limit_idx, X_width:(X_width + foreground.shape[1]),
+                :] = foreground[i.min():i.max(), :, :]
             else:
-                foreground_for_pasting[0:y_low_limit_idx, X_width:(X_width + foreground.shape[1]),:] = foreground[(i.max()-y_low_limit_idx):i.max(), :, :]
+                foreground_for_pasting[0:y_low_limit_idx, X_width:(X_width + foreground.shape[1]), :] = foreground[(
+                                                                                                                           i.max() - y_low_limit_idx):i.max(),
+                                                                                                        :, :]
 
         elif (i.max() - i.min()) % 2 == 0:
-            foreground_for_pasting[(car_y_pos - car_height):(car_y_pos + car_height), X_width:(X_width+foreground.shape[1]), :] = \
+            foreground_for_pasting[(car_y_pos - car_height):(car_y_pos + car_height),
+            X_width:(X_width + foreground.shape[1]), :] = \
                 foreground[i.min():i.max(), :, :]
         else:
-            foreground_for_pasting[(car_y_pos - car_height - 1):(car_y_pos + car_height), X_width:(X_width+foreground.shape[1]), :] = \
+            foreground_for_pasting[(car_y_pos - car_height - 1):(car_y_pos + car_height),
+            X_width:(X_width + foreground.shape[1]), :] = \
                 foreground[i.min():i.max(), :, :]
         white_channel = np.ones((background.shape[0], background.shape[1], 1), dtype='uint8') * 255
         background = np.concatenate([background, white_channel], axis=2)
@@ -128,50 +139,61 @@ def scale_for_paste(background: np.ndarray, foreground: np.ndarray, channel_dime
     return foreground_for_pasting, background
 
 
-def stroke_mask(img_array: np.array, threshold: int, mask_size: int, colors: (int, int, int)):
+def stroke_mask(img_array: np.array, mask_size: int):
     """
     세그멘테이션된 차량 이미지 외곽에 매우 굵은 윤곽선을 생성하여 Stable diffusion inpaint 모델의 마스크로 사용함
 
     Args:
         image (Image.Image): Pillow image, 'RGBA'
-        threshold (str): Alpha 차원 (:,:,3)의 threshold값
         stroke_size (str): 윤곽석 굵이, 픽셀 단위
         colors ((int,int,int)): 십진수 색상, 'RGB', 0-255
 
     Returns:
         result (PIL.Image.Image): 윤곽선을 포함한 차량 이미지, 배경 없음
-        bigger_image (PIL.Image.Image): 윤곽석을 제외한 차량 이미지, 배경 없음
     """
 
-    h, w, _ = img_array.shape
-    pad_int = int(0)
-    padding = mask_size + pad_int
+    # Add padding to the image
+    padding = mask_size
     alpha = img_array[:, :, 3]
     rgb_img = img_array[:, :, 0:3]
-    bigger_img = cv2.copyMakeBorder(rgb_img, padding, padding, padding, padding,
+    padded_img = cv2.copyMakeBorder(rgb_img, padding, padding, padding, padding,
                                     cv2.BORDER_CONSTANT, value=(0, 0, 0, 0))
     alpha = cv2.copyMakeBorder(alpha, padding, padding, padding, padding, cv2.BORDER_CONSTANT, value=0)
-    bigger_img = cv2.merge((bigger_img, alpha))
-    h, w, _ = bigger_img.shape
 
-    _, alpha_without_shadow = cv2.threshold(alpha, threshold, 255, cv2.THRESH_BINARY)  # threshold=0 in photoshop
+    # Merge the padded image and alpha channel
+    padded_img = cv2.merge((padded_img, alpha))
+
+    # Apply threshold to the alpha channel
+    _, alpha_without_shadow = cv2.threshold(alpha, 0, 255, cv2.THRESH_BINARY)
+
+    # Calculate distance transform
     alpha_without_shadow = 255 - alpha_without_shadow
     dist = cv2.distanceTransform(alpha_without_shadow, cv2.DIST_L2, cv2.DIST_MASK_3)  # dist l1 : L1 , dist l2 : l2
-    stroked = change_matrix(dist, mask_size)
-    stroke_alpha = (stroked * 255).astype(np.uint8)
 
+    # Modify distance matrix based on mask size
+    masked = change_matrix(dist, mask_size)
+    masked_alpha = (masked * 255).astype(np.uint8)
+
+    # Create stroke image
+    h, w, _ = padded_img.shape
+    colors = (255, 255, 255)
     stroke_b = np.full((h, w), colors[2], np.uint8)
     stroke_g = np.full((h, w), colors[1], np.uint8)
     stroke_r = np.full((h, w), colors[0], np.uint8)
-    stroke = cv2.merge((stroke_r, stroke_g, stroke_b, stroke_alpha))
+    mask = cv2.merge((stroke_r, stroke_g, stroke_b, masked_alpha))
 
-    stroke = Image.fromarray(stroke)
-    bigger_img = Image.fromarray(bigger_img)
-    result = Image.alpha_composite(stroke, bigger_img)
-    return result, bigger_img, alpha_without_shadow
+    # Modify distance matrix based on contour size
+    mask = Image.fromarray(mask)
+    padded_img = Image.fromarray(padded_img)
+
+    # Combine stroke and padded_img using alpha composite
+    result = Image.alpha_composite(mask, padded_img)
+    alpha = Image.fromarray(alpha_without_shadow)
+
+    return padded_img, result, alpha
 
 
-def stroke_contour(img_array: np.array, threshold: int, mask_size: int, colors: (int, int, int), contour_size: int):
+def stroke_contour(img_array: np.array, mask_size: int, contour_size: int):
     """
     세그멘테이션된 차량 이미지에 윤곽선을 생성
 
@@ -188,35 +210,58 @@ def stroke_contour(img_array: np.array, threshold: int, mask_size: int, colors: 
     if contour_size < 2:
         contour_size = 2
 
-    h, w = img_array.shape[:2]
-    pad_int = int(0)
-    padding = mask_size + pad_int
+    # Add padding to the image
+    padding = mask_size
     alpha = img_array[:, :, 3]
     rgb_img = img_array[:, :, 0:3]
-    bigger_img = cv2.copyMakeBorder(rgb_img, padding, padding, padding, padding,
+    padded_img = cv2.copyMakeBorder(rgb_img, padding, padding, padding, padding,
                                     cv2.BORDER_CONSTANT, value=(0, 0, 0, 0))
     alpha = cv2.copyMakeBorder(alpha, padding, padding, padding, padding, cv2.BORDER_CONSTANT, value=0)
-    bigger_img = cv2.merge((bigger_img, alpha))
-    h, w, _ = bigger_img.shape
 
-    _, alpha_without_shadow = cv2.threshold(alpha, threshold, 255, cv2.THRESH_BINARY)  # threshold=0 in photoshop
+    # Merge the padded image and alpha channel
+    padded_img = cv2.merge((padded_img, alpha))
+
+    # Apply threshold to the alpha channel
+    _, alpha_without_shadow = cv2.threshold(alpha, 0, 255, cv2.THRESH_BINARY)
+
+    # Calculate distance transform
     alpha_without_shadow = 255 - alpha_without_shadow
     dist = cv2.distanceTransform(alpha_without_shadow, cv2.DIST_L2, cv2.DIST_MASK_3)  # dist l1 : L1 , dist l2 : l2
+
+    # Modify distance matrix based on contour size
     stroked = change_matrix(dist, contour_size)
     stroke_alpha = (stroked * 255).astype(np.uint8)
 
+    # Create stroke image
+    h, w, _ = padded_img.shape
+    colors = (255, 255, 255)
     stroke_b = np.full((h, w), colors[2], np.uint8)
     stroke_g = np.full((h, w), colors[1], np.uint8)
     stroke_r = np.full((h, w), colors[0], np.uint8)
     stroke = cv2.merge((stroke_r, stroke_g, stroke_b, stroke_alpha))
 
+    # Convert arrays to PIL images
     stroke = Image.fromarray(stroke)
-    bigger_img = Image.fromarray(bigger_img)
-    result = Image.alpha_composite(stroke, bigger_img)
+    padded_img = Image.fromarray(padded_img)
+
+    # Combine stroke and padded_img using alpha composite
+    result = Image.alpha_composite(stroke, padded_img)
+
     return result
 
 
 def change_matrix(input_mat, stroke_size):
+    """
+        Modify input matrix based on the stroke size.
+
+        Args:
+            input_mat (np.array): Input matrix to be modified.
+            stroke_size (int): Width of the stroke in pixels.
+
+        Returns:
+            mat (np.array): Modified matrix.
+    """
+
     stroke_size = stroke_size - 1
     mat = np.ones(input_mat.shape)
     check_size = stroke_size + 1.0
@@ -227,7 +272,7 @@ def change_matrix(input_mat, stroke_size):
 
 
 def adjust_outline_height(mask, contour_alpha):
-    h, w, _ = contour_alpha.shape
+    h, w = contour_alpha.shape
     _, bw = cv2.threshold(mask, 50, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
     contours, _ = cv2.findContours(bw, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
 
@@ -257,13 +302,13 @@ def adjust_outline_height(mask, contour_alpha):
     y_left = np.rint(model_left.predict(features) * (contour[:, 0, 0].max() - contour[:, 0, 0].min()))
     y_right = np.rint(model_right.predict(features) * (contour[:, 0, 0].max() - contour[:, 0, 0].min()))
 
-    i, j, _ = np.where(contour_alpha != 0)
-    height_offset = (i.max() - i.min()) // 2
-    width_offset = (j.max() - j.min()) // 20
+    y, x = np.where(contour_alpha != 0)
+    height_offset = (y.max() - y.min()) * 2 // 3
+    width_offset = (x.max() - x.min()) // 20
 
     contour_alpha[y_left[0].astype('int'):, :w // 2] = 0
     contour_alpha[y_right[0].astype('int'):, w // 2:] = 0
-    contour_alpha[i.min() + height_offset:, j.min() + width_offset:j.max() - width_offset] = 0
+    contour_alpha[x.min() + height_offset:, x.min() + width_offset:x.max() - width_offset] = 0
 
     return contour_alpha
 
