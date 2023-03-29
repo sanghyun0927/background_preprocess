@@ -62,8 +62,18 @@ def rescale_and_paste(old_fore: Image, old_back: Image, only_rescale: bool, scal
         return result, new_im
 
 
-def create_manipulated_mask(mask_np, alpha_np, contour_np):
-    #config
+def create_manipulated_mask(mask_np: np.ndarray, alpha_np: np.ndarray, contour_np: np.ndarray) -> Image.Image:
+    """Create a manipulated RGBA mask image.
+
+        Args:
+            mask_np (numpy.ndarray): The input RGBA mask array.
+            alpha_np (numpy.ndarray): The input alpha array.
+            contour_np (numpy.ndarray): The input contour array.
+
+        Returns:
+            PIL.Image.Image: The output RGBA mask image.
+    """
+    # config
     top_y_ratio = 1
     mask_y_ratio = 0.525
 

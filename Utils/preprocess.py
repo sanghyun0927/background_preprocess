@@ -7,136 +7,84 @@ import xgboost as xgb
 
 from typing import List, Tuple
 
+from typing import Tuple, Union
+from PIL import Image
+import numpy as np
 
-def scale_for_paste(background: np.ndarray, foreground: np.ndarray, channel_dimension: int, alpha_value: int,
-                    car_y_ratio: int, small: bool = False) -> Tuple[
-    np.ndarray, np.ndarray]:
+
+def rescale_and_paste(
+        old_foreground: Image.Image,
+        old_background: Image.Image,
+        only_rescale: bool,
+        scale_factor: int = 1
+) -> Union[Tuple[Image.Image, Image.Image], Image.Image]:
     """
-    Resize and position the foreground image to match the background image, and return the modified images.
-
-    If the width of the background image is larger than the width of the foreground image:
-        1. reduce the size of the background image to match the foreground image
-        2. paste the foreground image at the appropriate height in an array of the same size as the reduced background image
-
-    If the width of the background image is smaller than the width of the foreground image:
-        1. reduce the size of the foreground image to fit the background image
-        2. paste the foreground image at the appropriate height in an array of the same size as the background image
+    Rescale and paste the foreground image onto the background image.
 
     Args:
-        background: A NumPy array representing the background image.
-        foreground: A NumPy array representing the foreground car image.
-        channel_dimension: An integer representing the dimension of the color channel.
-        alpha_value: An integer representing the alpha channel value.
+        old_foreground (Image.Image): The original foreground image.
+        old_background (Image.Image): The original background image.
+        only_rescale (bool): Whether to return only the rescaled foreground image.
+        scale_factor (int): An optional scale factor to apply.
 
     Returns:
-        A tuple of two NumPy arrays. The first array is the modified foreground image, and the second array is the
-        modified background image.
+        Union[Tuple[Image.Image, Image.Image], Image.Image]: Either a tuple containing the
+        resulting image and the new foreground image, or only the new foreground image.
     """
+    # Configuration
+    fore_x_ratio = 0.5
+    fore_y_ratio = 0.65
+    fore_ratio = 0.6
 
-    # Scale the images to match each other's width
-    if not small:
-        foreground_width = foreground.shape[1]
-        background_width = background.shape[1]
-        if foreground_width < background_width:
-            scale_factor = foreground_width / background_width
-            background = cv2.resize(background, dsize=(0, 0), fx=scale_factor, fy=scale_factor,
-                                    interpolation=cv2.INTER_AREA)
-        else:
-            scale_factor = background_width / foreground_width
-            foreground = cv2.resize(foreground, dsize=(0, 0), fx=scale_factor, fy=scale_factor,
-                                    interpolation=cv2.INTER_AREA)
+    # Define scale and resized image size
+    if old_foreground.width > old_background.width:
+        new_fore_width = old_background.width * fore_ratio * scale_factor
+        new_fore_height = old_foreground.height * new_fore_width / old_foreground.width
 
-            # If the foreground image is grayscale, add a third dimension for compatibility with the background image
-            if len(foreground.shape) == 2:
-                foreground = np.expand_dims(foreground, axis=2)
-            foreground[:, :, channel_dimension - 1] = np.where(foreground[:, :, channel_dimension - 1] < 128, 0, 255)
+        new_width = np.rint(new_fore_width).astype('uint16')
+        new_height = np.rint(new_fore_height).astype('uint16')
 
-        # Create a new array to hold the resized foreground image
-        foreground_for_pasting = np.ones((background.shape[0], background.shape[1], channel_dimension),
-                                         dtype='uint8') * alpha_value
-        foreground_for_pasting[:, :, channel_dimension - 1] = 255 - alpha_value
-
-        # If the foreground image is grayscale, add a third dimension for compatibility with the background image
-        if len(foreground.shape) == 2:
-            foreground = np.expand_dims(foreground, axis=2)
-
-        # Find the y-position and height of the car in the foreground image
-        i, _ = np.where(foreground[:, :, channel_dimension - 1] == alpha_value)
-        car_height = (i.max() - i.min()) // 2
-        car_y_pos = int(car_y_ratio * background.shape[0])
-        assert car_y_pos >= car_height, print('입력 이미지의 세로 길이가 제한 공간을 초과 하였습니다. 입력 이미지의 세로 여백을 잘라내고 다시 시도하세요.')
-
-        # Copy the car from the foreground image to the foreground_for_pasting array, locate to specified y coordinate
-        if car_y_pos + car_height > foreground_for_pasting.shape[0]:
-            y_low_limit_idx = foreground_for_pasting.shape[0] * 99 // 100
-            y_high_limit_idx = y_low_limit_idx - i.max() + i.min()
-            foreground_for_pasting[y_high_limit_idx:y_low_limit_idx, :, :] = foreground[i.min():i.max(), :, :]
-        else:
-            if (i.max() - i.min()) % 2 == 0:
-                foreground_for_pasting[(car_y_pos - car_height):(car_y_pos + car_height), :, :] = foreground[
-                                                                                                  i.min():i.max(), :, :]
-            else:
-                foreground_for_pasting[(car_y_pos - car_height - 1):(car_y_pos + car_height), :, :] = foreground[
-                                                                                                      i.min():i.max(),
-                                                                                                      :, :]
-
-        white_channel = np.ones((background.shape[0], background.shape[1], 1), dtype='uint8') * 255
-        background = np.concatenate([background, white_channel], axis=2)
-
+        # Resizing
+        new_foreground = old_foreground.resize((new_width, new_height))
+        new_background = old_background
     else:
-        foreground_width = foreground.shape[1]
-        background_width = background.shape[1]
-        if foreground_width < background_width:
-            scale_factor = foreground_width / background_width * (7 / 6)
-            background = cv2.resize(background, dsize=(0, 0), fx=scale_factor, fy=scale_factor,
-                                    interpolation=cv2.INTER_AREA)
-        else:
-            scale_factor = background_width / foreground_width * (6 / 7)
-            foreground = cv2.resize(foreground, dsize=(0, 0), fx=scale_factor, fy=scale_factor,
-                                    interpolation=cv2.INTER_AREA)
+        new_back_width = old_foreground.width / fore_ratio / scale_factor
+        new_back_height = old_background.height * new_back_width / old_background.width
 
-            # If the foreground image is grayscale, add a third dimension for compatibility with the background image
-            if len(foreground.shape) == 2:
-                foreground = np.expand_dims(foreground, axis=2)
-            foreground[:, :, channel_dimension - 1] = np.where(foreground[:, :, channel_dimension - 1] < 128, 0, 255)
+        new_width = np.rint(new_back_width).astype('uint16')
+        new_height = np.rint(new_back_height).astype('uint16')
 
-        # Create a new array to hold the resized foreground image
-        foreground_for_pasting = np.ones((background.shape[0], background.shape[1], channel_dimension),
-                                         dtype='uint8') * alpha_value
-        foreground_for_pasting[:, :, channel_dimension - 1] = 255 - alpha_value
+        # Resizing
+        new_foreground = old_foreground
+        new_background = old_background.resize((new_width, new_height))
 
-        # Find the y-position and height of the car in the foreground image
-        i, j = np.where(foreground[:, :, channel_dimension - 1] == alpha_value)
-        X_width = np.rint(foreground_for_pasting.shape[1] / 14).astype('uint16')
-        # X_offset = foreground_for_pasting.shape[1] % 14
-        car_height = (i.max() - i.min()) // 2
-        car_y_pos = int(car_y_ratio * background.shape[0])
-        assert car_y_pos >= car_height, print('입력 이미지의 세로 길이가 제한 공간을 초과 하였습니다. 입력 이미지의 세로 여백을 잘라내고 다시 시도하세요.')
-        # Copy the car from the foreground image to the foreground_for_pasting array, locate to specified y coordinate
+    # Foreground(차량)의 높이가 background(배경)의 높이를 초과하는 경우 에러를 발생시킴
+    assert new_foreground.height < new_background.height, (
+        "입력 이미지의 세로 길이가 제한 공간을 초과 하였습니다. 입력 이미지의 세로 여백을 잘라내고 다시 시도하세요."
+    )
 
-        if car_y_pos + car_height > foreground_for_pasting.shape[0]:
-            y_low_limit_idx = foreground_for_pasting.shape[0] * 99 // 100
-            if y_low_limit_idx > (i.max() - i.min()):
-                y_high_limit_idx = y_low_limit_idx - i.max() + i.min()
-                foreground_for_pasting[y_high_limit_idx:y_low_limit_idx, X_width:(X_width + foreground.shape[1]),
-                :] = foreground[i.min():i.max(), :, :]
-            else:
-                foreground_for_pasting[0:y_low_limit_idx, X_width:(X_width + foreground.shape[1]), :] = foreground[(
-                                                                                                                           i.max() - y_low_limit_idx):i.max(),
-                                                                                                        :, :]
+    # Define the location of the foreground
+    y_center = int(new_background.height * fore_y_ratio)
+    x_center = int(new_background.width * fore_x_ratio)
+    y = y_center - new_foreground.height // 2
+    x = x_center - new_foreground.width // 2
 
-        elif (i.max() - i.min()) % 2 == 0:
-            foreground_for_pasting[(car_y_pos - car_height):(car_y_pos + car_height),
-            X_width:(X_width + foreground.shape[1]), :] = \
-                foreground[i.min():i.max(), :, :]
-        else:
-            foreground_for_pasting[(car_y_pos - car_height - 1):(car_y_pos + car_height),
-            X_width:(X_width + foreground.shape[1]), :] = \
-                foreground[i.min():i.max(), :, :]
-        white_channel = np.ones((background.shape[0], background.shape[1], 1), dtype='uint8') * 255
-        background = np.concatenate([background, white_channel], axis=2)
+    # 새 alpha 채널 직사각형 이미지 생성
+    new_image = Image.new(mode='RGBA', size=new_background.size)
 
-    return foreground_for_pasting, background
+    # Paste foreground on transparent background
+    try:
+        new_image.paste(new_foreground, (x, y))
+    except:
+        print('Check preprocess.py')
+        new_image.paste(new_foreground, (x, new_background.height - new_foreground.height))
+
+    if only_rescale:
+        return new_image
+    else:
+        # Paste foreground onto background
+        result = Image.alpha_composite(new_background, new_image)
+        return result, new_image
 
 
 def stroke_mask(img_array: np.array, mask_size: int):
@@ -144,7 +92,7 @@ def stroke_mask(img_array: np.array, mask_size: int):
     세그멘테이션된 차량 이미지 외곽에 매우 굵은 윤곽선을 생성하여 Stable diffusion inpaint 모델의 마스크로 사용함
 
     Args:
-        image (Image.Image): Pillow image, 'RGBA'
+        image_array (np.array): Pillow image, 'RGBA'
         stroke_size (str): 윤곽석 굵이, 픽셀 단위
         colors ((int,int,int)): 십진수 색상, 'RGB', 0-255
 
@@ -271,46 +219,125 @@ def change_matrix(input_mat, stroke_size):
     return mat
 
 
-def adjust_outline_height(mask, contour_alpha):
+def adjust_contour_height(mask, contour_alpha):
+    """
+    1. Compute the left and the right height of contour
+    2. Based on computed height, make manipulated alpha mask of contour and foreground
+    Args:
+        mask (np.array): A binary mask of the object.
+        contour_alpha (np.array): The alpha mask of the object's contour and foreground.
+
+    Returns:
+        np.array: The modified contour alpha mask.
+
+    """
+
     h, w = contour_alpha.shape
     _, bw = cv2.threshold(mask, 50, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
-    contours, _ = cv2.findContours(bw, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
 
-    contour_lengths = [len(contour) for contour in contours]
-    sorted_index = [contour_lengths.index(x) for x in sorted(contour_lengths, reverse=True)]
+    # Find edges in the alpha mask
+    edges, _ = cv2.findContours(bw, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
 
+    # Get the number of edges and sort them in descending order
+    edge_lengths = [len(edge) for edge in edges]
+    sorted_index = [edge_lengths.index(x) for x in sorted(edge_lengths, reverse=True)]
+
+    # Select the edge to adjust
     try:
         first_idx, second_idx = sorted_index[:2]
-        if (contours[first_idx][0, 0, 0] == 0) | (contours[first_idx][0, 0, 1] == 0):
-            contour = contours[second_idx]
+        if (edges[first_idx][0, 0, 0] == 0) | (edges[first_idx][0, 0, 1] == 0):
+            edge = edges[second_idx]
         else:
-            contour = contours[first_idx]
+            edge = edges[first_idx]
     except ValueError:
-        contour = contours[0]
+        edge = edges[0]
 
     model_left = xgb.XGBRegressor()
     model_right = xgb.XGBRegressor()
     model_left.load_model('./xgb_model/outline_left.model')
     model_right.load_model('./xgb_model/outline_right.model')
 
-    hundred_idx = np.rint(np.linspace(0, len(contour) - 1, 200)).astype('uint16')
-    x_array = (contour[hundred_idx, 0, 0].flatten() - contour[:, 0, 0].min()) / (
-            contour[:, 0, 0].max() - contour[:, 0, 0].min())
-    y_array = contour[hundred_idx, 0, 1].flatten() / (contour[:, 0, 0].max() - contour[:, 0, 0].min())
+    # Preprocess contour data for XGBoost models
+    hundred_idx = np.rint(np.linspace(0, len(edge) - 1, 200)).astype('uint16')
+    x_array = (edge[hundred_idx, 0, 0].flatten() - edge[:, 0, 0].min()) / (
+            edge[:, 0, 0].max() - edge[:, 0, 0].min())
+    y_array = edge[hundred_idx, 0, 1].flatten() / (edge[:, 0, 0].max() - edge[:, 0, 0].min())
 
+    # Predict the heights to adjust for left and right sides
     features = np.append(x_array, y_array).reshape((1, 400))
-    y_left = np.rint(model_left.predict(features) * (contour[:, 0, 0].max() - contour[:, 0, 0].min()))
-    y_right = np.rint(model_right.predict(features) * (contour[:, 0, 0].max() - contour[:, 0, 0].min()))
+    y_left = np.rint(model_left.predict(features) * (edge[:, 0, 0].max() - edge[:, 0, 0].min()))
+    y_right = np.rint(model_right.predict(features) * (edge[:, 0, 0].max() - edge[:, 0, 0].min()))
 
+    # Find non-zero pixels in the contour alpha mask
     y, x = np.where(contour_alpha != 0)
+
+    # Calculate height and width offsets
     height_offset = (y.max() - y.min()) * 2 // 3
     width_offset = (x.max() - x.min()) // 20
 
+    # Adjust the contour alpha mask
     contour_alpha[y_left[0].astype('int'):, :w // 2] = 0
     contour_alpha[y_right[0].astype('int'):, w // 2:] = 0
-    contour_alpha[x.min() + height_offset:, x.min() + width_offset:x.max() - width_offset] = 0
+    contour_alpha[y.min() + height_offset:, x.min() + width_offset:x.max() - width_offset] = 0
 
     return contour_alpha
+
+
+def create_manipulated_mask(mask_np: np.ndarray, alpha_np: np.ndarray, contour_np: np.ndarray) -> Image.Image:
+    """Create a manipulated RGBA mask image.
+
+        Args:
+            mask_np (numpy.ndarray): The input RGBA mask array.
+            alpha_np (numpy.ndarray): The input alpha array.
+            contour_np (numpy.ndarray): The input contour array.
+
+        Returns:
+            PIL.Image.Image: The output RGBA mask image.
+    """
+    # config
+    top_y_ratio = 1
+    mask_y_ratio = 0.525
+
+    # Extract the shape of the mask_np array
+    mask_height, mask_width = mask_np.shape[:2]
+
+    # Find indices where the non-masked area located
+    mask_indices = np.where(mask_np[:, :, 3] == 0)
+    # Find indices where the foreground, car, located
+    alpha_indices = np.where(alpha_np[:, :] == 0)
+    # Find indices modified contour and foreground located
+    contour_indices = np.where(contour_np[:, :] == 255)
+
+    # Initialize manipulated_mask array with the same shape as the input mask
+    manipulated_mask = np.zeros((mask_height, mask_width), dtype='uint8')
+
+    # Value of non-masked area equal 255
+    manipulated_mask[mask_indices] = 255
+    # Make the value of the area below a specified height equal 0
+    manipulated_mask[int(mask_height * mask_y_ratio):, :] = 0
+    # Value of foreground located area equal 255
+    manipulated_mask[alpha_indices] = 255
+    # Make the value of the area, above the foreground, equal 255
+    manipulated_mask[:alpha_indices[0].min() * top_y_ratio, :] = 255
+    # Make the value of modified contour and foreground located area equal 255
+    manipulated_mask[contour_indices] = 255
+
+    # Create a binary mask with values below 128 set to 255 and others set to 0
+    binary_mask = np.where(manipulated_mask < 128, 255, 0).astype('uint8')
+
+    # Expand the binary mask dimensions to create a reverse mask
+    mask_reverse = np.expand_dims(binary_mask, axis=2)
+
+    # Expand the dimensions of the manipulated mask and duplicate it along the color channels
+    mask_rgb = np.tile(np.expand_dims(manipulated_mask, axis=2), reps=[1, 1, 3])
+
+    # Combine the mask_rgb and mask_reverse arrays along the last axis to create an RGBA mask
+    mask_rgba = np.concatenate((mask_rgb, mask_reverse), axis=-1)
+
+    # Convert the mask_rgba array to an RGBA image
+    mask_image = Image.fromarray(mask_rgba, mode='RGBA')
+
+    return mask_image
 
 # def draw_axis(img: np.ndarray, start_point: Tuple[float, float], end_point: Tuple[float, float], color: Tuple[int, int, int], scale: float) -> Tuple[List[float], float]:
 #     """

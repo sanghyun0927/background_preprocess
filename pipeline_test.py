@@ -6,23 +6,36 @@ from PIL import Image
 from tqdm import tqdm
 
 from Utils.u2net_bg import remove
-from Utils.preprocess import stroke_contour, stroke_mask, adjust_outline_height
-from Utils.preprocess_test import rescale_and_paste, create_manipulated_mask
+from Utils.preprocess import rescale_and_paste, stroke_contour, stroke_mask, adjust_contour_height, \
+    create_manipulated_mask
 
-top_y_ratio = 1
-mask_y_ratio = 0.525
-car_y_ratio = 0.65
+cwd = os.getcwd()
+image_dirs = glob(cwd + "\\bakcha2\\*\\*\\", recursive=True)
+img_paths = []
+
+for dir in image_dirs:
+    img_path = os.listdir(dir)
+    for path in img_path:
+        if 'mask' in path:
+            continue
+        if 'orig' in path:
+            continue
+        if 'process' in path:
+            continue
+        if 'visual' in path:
+            continue
+        img_paths.append(dir + path)
+
 background_path = './background/background.png'
 
-for i in tqdm(range(1)):
-    i = './bakcha2/bakcha/117_8600/1.png'
-    img_path = i
+for i in tqdm(img_paths):
+    print(i)
     process_path = i.split(".")[0] + '_process.png'
     mask_path = i.split(".")[0] + '_mask.png'
     orig_path = i.split(".")[0] + '_orig.png'
     visual_path = i.split(".")[0] + '_visualize.png'
 
-    # 세그멘테이션 및 정사각형 이미지 생성, (model_name='u2car_v2.1', size=320 / model_name='InSPyReNet', size=1024)
+    # 세그멘테이션 , (model_name='u2car_v2.1', size=320 / model_name='InSPyReNet', size=1024)
     car = remove(Image.open(i), post_process_mask=True, model_name='InSPyReNet', size=1024)
     car_array = np.array(car)
 
@@ -35,8 +48,8 @@ for i in tqdm(range(1)):
     image_size = car_full_array.shape[:2]
     mask_size = image_size[0] // 7
     contour_size = np.max(image_size) // 80 if np.max(image_size) < 2048 else 2048 // 108
-    foreground, foreground_mask, foreground_alpha = stroke_mask(car_array, mask_size=mask_size)
-    foreground_contour = stroke_contour(car_array, mask_size=mask_size, contour_size=contour_size)
+    foreground, foreground_mask, foreground_alpha = stroke_mask(car_full_array, mask_size=mask_size)
+    foreground_contour = stroke_contour(car_full_array, mask_size=mask_size, contour_size=contour_size)
 
     ## 배경 생성
     background = Image.open(background_path).convert('RGBA')  # + img_path.split('\\')[-1]
@@ -63,28 +76,12 @@ for i in tqdm(range(1)):
     alpha_resized_np = alpha_resized_np[:, :, 0]
 
     # 윤곽선 array에서 좌우 윤곽선 높이 지정
-    contour_modified = adjust_outline_height(alpha_resized_np, contour_alpha_np)
+    contour_modified = adjust_contour_height(alpha_resized_np, contour_alpha_np)
 
-    # # 최초 마스크 및 윤곽선, Alpha 채널 값을 고려한 최종 마스크 생성
-    # mask_y, mask_x = np.where(mask_resized_np[:, :, 3] == 0)
-    # alpha_y, alpha_x = np.where(alpha_resized_np[:, :] == 0)
-    # contour_y, contour_x = np.where(contour_modified[:, :] == 255)
-    #
-    # mask_array = np.ones(mask_resized_np.shape[:2], dtype='uint8') * 0
-    # mask_array[mask_y, mask_x] = 255
-    # mask_array[int(mask_resized_np.shape[0] * mask_y_ratio):, :] = 0
-    # mask_array[alpha_y, alpha_x] = 255
-    # mask_array[:alpha_y.min() * top_y_ratio, :] = 255
-    # mask_array[contour_y, contour_x] = 255
-    #
-    # # Create a reverse mask and append it to the original mask as an alpha channel
-    # mask_reverse = np.expand_dims(np.where(mask_array < 128, 255, 0).astype('uint8'), axis=2)
-    # mask_rgb = np.tile(np.expand_dims(mask_array, axis=2), reps=[1, 1, 3])
-    # mask_rgba = np.concatenate((mask_rgb, mask_reverse), axis=-1)
-    # mask = Image.fromarray(mask_rgba, mode='RGBA')
+    # 최종 입력 마스크 이미지 생성
     mask = create_manipulated_mask(mask_resized_np, alpha_resized_np, contour_modified)
 
     img_pasted.save(process_path)
     mask.save(mask_path)
-    Image.fromarray(new_foreground).save(orig_path)
+    new_foreground.save(orig_path)
     Image.alpha_composite(img_pasted, mask).save(visual_path)
